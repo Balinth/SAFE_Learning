@@ -45,7 +45,7 @@ let init () =
       ServerState = Idle }, Cmd.ofMsg (PostcodeChanged "")
 
 let getResponse postcode = promise {
-    let! location = Fetch.get<LocationResponse>(sprintf "/api/distance/%s" postcode)
+    let! location = Fetch.post<PostcodeRequest, LocationResponse>( "/api/distance", {PostcodeRequest.Postcode = postcode})
     // if the endpoint doesn't exist, just return an empty array!
     let! crimes = Fetch.get<CrimeResponse array>(sprintf "api/crime/%s" postcode) |> Promise.catch(fun _ -> [||])
     let! weather = Fetch.get<WeatherResponse>(sprintf "api/weather/%s" postcode)

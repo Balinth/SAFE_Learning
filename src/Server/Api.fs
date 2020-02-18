@@ -13,7 +13,9 @@ let invalidPostcode next (ctx:HttpContext) =
     ctx.SetStatusCode 400
     text "Invalid postcode" next ctx
 
-let getDistanceFromLondon postcode next (ctx:HttpContext) = task {
+let getDistanceFromLondon next (ctx:HttpContext) = task {
+    let! postcodeRequest = ctx.BindModelAsync<PostcodeRequest>()
+    let postcode = postcodeRequest.Postcode
     if Validation.isValidPostcode postcode then
         let! location = getLocation postcode
         let distanceToLondon = getDistanceBetweenPositions location.LatLong london
@@ -53,7 +55,7 @@ let getWeather postcode next ctx = task {
 
 let apiRouter = router {
     pipe_through (pipeline { set_header "x-pipeline-type" "Api" })
-    getf "/distance/%s" getDistanceFromLondon
+    post "/distance" getDistanceFromLondon
     getf "/crime/%s" getCrimeReport
     getf "/weather/%s" getWeather
     (* Task 1.0 CRIME: Add a new /crime/{postcode} endpoint to return crime data
