@@ -46,6 +46,7 @@ let private asWeatherResponse (weather:DataAccess.Weather.MetaWeatherLocation.Ro
 let getWeather postcode next ctx = task {
      let! location = GeoLocation.getLocation postcode
      let! weather = Weather.getWeatherForPosition location.LatLong
+     System.Threading.Thread.Sleep(5000)
      let weatherResponse = asWeatherResponse weather
     (* Task 4.1 WEATHER: Implement a function that retrieves the weather for
        the given postcode. Use the GeoLocation.getLocation, Weather.getWeatherForPosition and

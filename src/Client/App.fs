@@ -18,7 +18,7 @@ open Thoth.Fetch
 type Report =
     { Location : LocationResponse
       Crimes : CrimeResponse array
-      Weather : WeatherResponse }
+      Weather : WeatherResponse option}
 
 type ServerState = Idle | Loading | ServerError of string
 
@@ -32,6 +32,7 @@ type Model =
 /// The different types of messages in the system.
 type Msg =
     | GetReport
+    | GotWeather of WeatherResponse
     | PostcodeChanged of string
     | GotReport of Report
     | ErrorMsg of exn
@@ -45,24 +46,33 @@ let init () =
       ServerState = Idle }, Cmd.ofMsg (PostcodeChanged "")
 
 let getResponse postcode = promise {
-    let! location = Fetch.post<PostcodeRequest, LocationResponse>( "/api/distance", {PostcodeRequest.Postcode = postcode})
+    let location2 = Fetch.post<PostcodeRequest, LocationResponse>( "/api/distance", {PostcodeRequest.Postcode = postcode})
     // if the endpoint doesn't exist, just return an empty array!
-    let! crimes = Fetch.get<CrimeResponse array>(sprintf "api/crime/%s" postcode) |> Promise.catch(fun _ -> [||])
-    let! weather = Fetch.get<WeatherResponse>(sprintf "api/weather/%s" postcode)
+    let crimes2 = Fetch.get<CrimeResponse array>(sprintf "api/crime/%s" postcode) |> Promise.catch(fun _ -> [||])
     (* Task 4.5 WEATHER: Fetch the weather from the API endpoint you created.
        Then, save its value into the Report below. You'll need to add a new
        field to the Report type first, though! *)
+    let! location = location2
+    let! crimes=crimes2
     return
         { Location = location
           Crimes = crimes
-          Weather = weather }
+          Weather = None }
+}
+
+let getWeatherResponse postcode = promise {
+    let! weather = Fetch.get<WeatherResponse>(sprintf "api/weather/%s" postcode)
+    return weather
 }
 
 /// The update function knows how to update the model given a message.
 let update msg model =
     match model, msg with
     | { ValidationError = None; Postcode = postcode }, GetReport ->
-        { model with ServerState = Loading }, Cmd.OfPromise.either getResponse postcode GotReport ErrorMsg
+        { model with ServerState = Loading }, Cmd.batch [ 
+            Cmd.OfPromise.either getResponse postcode GotReport ErrorMsg;
+            Cmd.OfPromise.either getWeatherResponse postcode GotWeather ErrorMsg 
+            ]
     | _, GetReport ->
         model, Cmd.none
     | _, GotReport response ->
@@ -70,6 +80,9 @@ let update msg model =
             ValidationError = None
             Report = Some response
             ServerState = Idle }, Cmd.none
+    | {Report = Some report}, GotWeather weather ->
+        {model with Report = Some {report with Weather = Some weather}}, Cmd.none
+    | _,GotWeather weather -> model,Cmd.none
     | _, PostcodeChanged p ->
         let error = if Validation.isValidPostcode p then None else Some "Invalid Postcode"
         { model with
@@ -140,15 +153,21 @@ module ViewParts =
                 Level.item [ Level.Item.HasTextCentered ] [
                     div [ ] [
                         Level.heading [ ] [
-                            Image.image [ Image.Is128x128 ] [
-                                img [ Src(sprintf "https://www.metaweather.com/static/img/weather/%s.svg" weatherReport.WeatherType.Abbreviation) ]
-                            ]
+                            match weatherReport with
+                            | Some weatherReport ->
+                                Image.image [ Image.Is128x128 ] [
+                                    img [ Src(sprintf "https://www.metaweather.com/static/img/weather/%s.svg" weatherReport.WeatherType.Abbreviation) ]
+                                ]
+                            | None -> Heading.h2 [] [string "LOADING..." |> str]
                         ]
                         Level.title [ ] [
                             Heading.h3 [ Heading.Is4; Heading.Props [ Style [ Width "100%" ] ] ] [
                                 (* Task 4.8 WEATHER: Get the temperature from the given weather report
                                    and display it here instead of an empty string. *)
-                                string weatherReport.AverageTemperature |> str
+                                let temp = match weatherReport with
+                                            | Some report -> report.AverageTemperature |> string
+                                            | None -> "LOADING..."
+                                temp |> str
                             ]
                         ]
                     ]
