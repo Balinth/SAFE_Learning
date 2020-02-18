@@ -42,16 +42,20 @@ let private asWeatherResponse (weather:DataAccess.Weather.MetaWeatherLocation.Ro
       AverageTemperature = weather.ConsolidatedWeather |> Array.averageBy(fun r -> float r.TheTemp) }
 
 let getWeather postcode next ctx = task {
+     let! location = GeoLocation.getLocation postcode
+     let! weather = Weather.getWeatherForPosition location.LatLong
+     let weatherResponse = asWeatherResponse weather
     (* Task 4.1 WEATHER: Implement a function that retrieves the weather for
        the given postcode. Use the GeoLocation.getLocation, Weather.getWeatherForPosition and
        asWeatherResponse functions to create and return a WeatherResponse instead of the stub.
        Don't forget to use let! instead of let to "await" the Task. *)
-    return! json { WeatherType = WeatherType.Clear; AverageTemperature = 0. } next ctx }
+    return! json weatherResponse next ctx }
 
 let apiRouter = router {
     pipe_through (pipeline { set_header "x-pipeline-type" "Api" })
     getf "/distance/%s" getDistanceFromLondon
-
+    getf "/crime/%s" getCrimeReport
+    getf "/weather/%s" getWeather
     (* Task 1.0 CRIME: Add a new /crime/{postcode} endpoint to return crime data
        using the getCrimeReport web part function. Use the above distance
        route as an example of how to add a new route. *)

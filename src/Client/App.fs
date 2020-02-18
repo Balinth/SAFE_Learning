@@ -17,7 +17,8 @@ open Thoth.Fetch
 /// The different elements of the completed report.
 type Report =
     { Location : LocationResponse
-      Crimes : CrimeResponse array }
+      Crimes : CrimeResponse array
+      Weather : WeatherResponse }
 
 type ServerState = Idle | Loading | ServerError of string
 
@@ -46,13 +47,14 @@ let getResponse postcode = promise {
     let! location = Fetch.get<LocationResponse>(sprintf "/api/distance/%s" postcode)
     // if the endpoint doesn't exist, just return an empty array!
     let! crimes = Fetch.get<CrimeResponse array>(sprintf "api/crime/%s" postcode) |> Promise.catch(fun _ -> [||])
-
+    let! weather = Fetch.get<WeatherResponse>(sprintf "api/weather/%s" postcode)
     (* Task 4.5 WEATHER: Fetch the weather from the API endpoint you created.
        Then, save its value into the Report below. You'll need to add a new
        field to the Report type first, though! *)
     return
         { Location = location
-          Crimes = crimes }
+          Crimes = crimes
+          Weather = weather }
 }
 
 /// The update function knows how to update the model given a message.
@@ -68,11 +70,12 @@ let update msg model =
             Report = Some response
             ServerState = Idle }, Cmd.none
     | _, PostcodeChanged p ->
+        let error = if Validation.isValidPostcode p then None else Some "Invalid Postcode"
         { model with
             Postcode = p
             (* Task 2.2 Validation. Use the Validation.isValidPostcode function to implement client-side form validation.
                Note that the validation is the same shared code that runs on the server! *)
-            ValidationError = None }, Cmd.none
+            ValidationError =  error}, Cmd.none
     | _, ErrorMsg e ->
         { model with ServerState = ServerError e.Message }, Cmd.none
 
@@ -119,10 +122,12 @@ module ViewParts =
             map [
                 (* Task 3.2 MAP: Set the center of the map using MapProps.Center, supply the lat/long value as input.
                    Task 3.3 MAP: Update the Zoom to 15. *)
-                MapProps.Zoom 11.
+                MapProps.Zoom 15.
                 MapProps.Style [ Height 500 ]
+                MapProps.Center latLong
             ] [
                 tileLayer [ TileLayerProps.Url "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" ] []
+                makeMarker latLong (string lr.Location.Town)
                 (* Task 3.4 MAP: Create a marker for the map. Use the makeMarker function above. *)
             ]
         ]
@@ -141,7 +146,7 @@ module ViewParts =
                             Heading.h3 [ Heading.Is4; Heading.Props [ Style [ Width "100%" ] ] ] [
                                 (* Task 4.8 WEATHER: Get the temperature from the given weather report
                                    and display it here instead of an empty string. *)
-                                str ""
+                                string weatherReport.AverageTemperature |> str
                             ]
                         ]
                     ]
@@ -152,7 +157,7 @@ module ViewParts =
         childTile "Location" [
             div [ ] [
                 Heading.h3 [ ] [ str model.Location.Location.Town ]
-                Heading.h4 [ ] [ str model.Location.Location.Region ]
+                Heading.h3 [ ] [ str model.Location.Location.Region ]
                 Heading.h4 [ ] [ sprintf "%.1fKM to London" model.Location.DistanceToLondon |> str ]
             ]
         ]
@@ -226,6 +231,7 @@ let view (model:Model) dispatch =
                     Tile.Size Tile.Is12
                 ] [
                     Tile.parent [ Tile.Size Tile.Is12 ] [
+                        mapTile report.Location 
                         (* Task 3.1 MAP: Call the mapTile function here, which creates a
                         tile to display a map using the React Leaflet component. The function
                         takes in a LocationResponse value as input and returns a ReactElement. *)
@@ -234,6 +240,7 @@ let view (model:Model) dispatch =
                 Tile.ancestor [ ] [
                     Tile.parent [ Tile.IsVertical; Tile.Size Tile.Is4 ] [
                         locationTile report
+                        weatherTile report.Weather
                         (* Task 4.6 WEATHER: Generate the view code for the weather tile
                            using the weatherTile function, supplying the weather data
                            from the report value, and include it here as part of the list *)
